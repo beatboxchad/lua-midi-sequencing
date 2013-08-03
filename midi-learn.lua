@@ -1,6 +1,7 @@
 #!/usr/bin/env lua5.1
 
 local socket = require("socket")
+local sequencer = require("sequencer")
 local ALSA = require 'midialsa'
 ALSA.client( 'Lua client', 1, 1, true)
 ALSA.connectto(1, 129, 0)
@@ -31,6 +32,11 @@ function makenote(i)
   return j
 end
 
+--[[
+this needs to be reimplemented, but it got the job done. Sort of.
+
+
+]]
 function iterate()
   local s = 0
     return function() if s < 6 then s = s + 1 else s = 0 mm = m() end print(s) return s end
@@ -47,7 +53,7 @@ s = iterate()
 
 while true do
 
-    socket.sleep(.2)
+    socket.sleep(.2) -- my clumsy way of implementing tempo
     ALSA.start()
     --local alsaevent = ALSA.input()
     local beat = s()
