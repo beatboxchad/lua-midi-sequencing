@@ -1,17 +1,109 @@
 #!/usr/bin/env lua
 
 --[[
+
+Copyright (C) 2013 Chad Cassady <chad@beatboxchad.com>
+Copyright (C) 2013 Nathan Lander <lander89@gmail.com>
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+--]]
+
+
+--[[
+
 This will contain all the stuff I plan to reuse with each script.
 
-* Functions to count what beat we're on, what measure we're on, and what chunk
-  we're on.
+TODO:
 
-*	Functions to grab tempo from JACK transport, which will probably require some
-	C development. Or, I can use midi clock, if I find some piece of software
-	which has done the heavy lifting for me.
-	
-*	functions to actually play notes, maybe skeletons of different phrasings or
-	time signatures - I haven't figured that out yet, I'll come up with the best
-	way to do it by actually playing music.
+	-	replace midialsa by adding MIDI capability to the JACK module, creating a
+		more platform-independent implementation (JACK runs on MacOS, iOS, Linux,
+		and did I read something about Windows?)
+
+	-	replace the iterator functions with calls to the new JACK module, which
+		returns BBT information as well as the time signature
+
+	- Document the new JACK module
+
+	- Come up with a good way to not flood polls to get JACK transport info.
+
+	- Collapse the data structures for songs, or figure out what's up with that
+		too many C levels bit.
+
 
 ]]
+
+
+local sequencer = require("sequencer")
+local ALSA = require 'midialsa'
+local JACK = require 'liblua_jack'
+
+JACK.client_init("lua_client")
+ALSA.client( 'Lua client', 1, 1, true)
+ALSA.connectto(1, 129, 0)
+ALSA.connectfrom( 1, 14, 0 )
+
+local notes = {}
+local songs = {}
+
+songs.nathans_song = {}
+songs.nathans_song[1] = notes.one
+songs.nathans_song[2] = rest
+songs.nathans_song[3] = notes.two
+songs.nathans_song[4] = nil
+songs.nathans_song[5] = notes.three
+songs.nathans_song[6] = notes.four
+songs.nathans_song[7] = notes.five
+
+notes.one = 42
+notes.two = 45
+notes.three = 40
+notes.four = 40
+notes.five = 40
+
+	--[[
+	CHAD:
+	we want to not waste resources constantly polling the current beat, so a way
+	to handle that needs to be figured out. Perhaps we'll calculate how long to
+	sleep based on beats per minute before taking our next action. However, I
+	don't want to create a situation where I'm trying to generate notes on the
+	tick (rather than on the beat) and end up sleeping through that intended
+	event. So perhaps a reverse-polling situation ought to be created for the
+	beats. Or I can just watch the ticks. Er... we'll see what I do.  
+	
+	--]]
+function checkbeat()
+	
+	local frame, state, bar, beat, tick, num, den = JACK.showtime() 
+	
+
+
+end
+
+while true do
+  ALSA.start()
+  print(beat)
+	print(bar)
+ 	local pitch = songs.song[beat]
+  if bar == 5 or measure == 6 then
+  if pitch ~= nil then
+      --pitch = pitch + 3
+    --end
+  end
+	end
+  if pitch ~= nil then
+    local note = ALSA.noteevent(4,pitch,52,0,.075)
+    ALSA.output(note)
+  end
+end
