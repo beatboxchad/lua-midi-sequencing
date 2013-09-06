@@ -45,13 +45,12 @@ TODO:
 ]]
 
 
-local sequencer = require("sequencer")
 local ALSA = require 'midialsa'
 local JACK = require 'liblua_jack'
 
 JACK.client_init("lua_client")
 ALSA.client( 'Lua client', 1, 1, true)
-ALSA.connectto(1, 129, 0)
+ALSA.connectto(1, 130, 0)
 ALSA.connectfrom( 1, 14, 0 )
 
 local notes = {}
@@ -74,7 +73,7 @@ notes.five = 40
 
 	--[[
 	CHAD:
-	we want to not waste resources constantly polling the current beat, so a way
+	I want to not waste resources constantly polling the current beat, so a way
 	to handle that needs to be figured out. Perhaps we'll calculate how long to
 	sleep based on beats per minute before taking our next action. However, I
 	don't want to create a situation where I'm trying to generate notes on the
@@ -82,28 +81,43 @@ notes.five = 40
 	event. So perhaps a reverse-polling situation ought to be created for the
 	beats. Or I can just watch the ticks. Er... we'll see what I do.  
 	
+	The other thing is I need to not constantly flush new MIDI messages down the
+	pipe every iteration of the while true part. So I'm either sleeping, or I'm
+	constantly checking shit? How do I write my function to wait? Am I waiting on
+	the beat, the bar, or what? Balls.
+
+	For now I have a checker function.
+
+	
 	--]]
+function wait_for_beat_change(beat)
+	local frame, state, bar, old_beat, tick, num, den = JACK.showtime() 
+	if beat == old_beat then
+		return 1
+	else
+		return 0
+	end
+end
+
 function checkbeat()
-	
-	local frame, state, bar, beat, tick, num, den = JACK.showtime() 
-	
-
-
 end
 
 while true do
   ALSA.start()
-  print(beat)
-	print(bar)
- 	local pitch = songs.song[beat]
+	local frame, state, bar, beat, tick, num, den = JACK.showtime() 
+	local song = "nathans_song"
+ 	local pitch = songs.nathans_song[beat]
   if bar == 5 or measure == 6 then
-  if pitch ~= nil then
-      --pitch = pitch + 3
-    --end
-  end
+		if pitch ~= nil then 
+		pitch = pitch + 3
+    end
 	end
-  if pitch ~= nil then
-    local note = ALSA.noteevent(4,pitch,52,0,.075)
-    ALSA.output(note)
+	local go = wait_for_beat_change(beat)
+	if go == 0 then 
+		print("I'm about to make a sound?")
+		print(beat)
+			local note = ALSA.noteevent(4,pitch,52,0,.075)
+			ALSA.output(note)
+			print("I made a noise, apparently")
   end
 end
