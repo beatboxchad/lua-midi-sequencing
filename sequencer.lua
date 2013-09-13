@@ -31,15 +31,22 @@ TODO:
 		more platform-independent implementation (JACK runs on MacOS, iOS, Linux,
 		and did I read something about Windows?)
 
-	-	replace the iterator functions with calls to the new JACK module, which
-		returns BBT information as well as the time signature
+	- Write a calibration routine which establishes a heartbeat for the sequencer
+		upon which we will perform all queries to JACK and send all MIDI events.
+		This will be based on the tick. In order to figure out how long between
+		ticks, I have a mind to use the usecs value returned by jack, but I don't
+		know what it is yet (milliseconds I think on my workstation) and the docs
+		say it's platform-dependant which means we might not get consistent
+		results. If it's a problem I'll look into what's available from the Lua
+		end. Anyway for more details see my comment down further.
 
 	- Document the new JACK module
 
 	- Come up with a good way to not flood polls to get JACK transport info.
 
-	- Collapse the data structures for songs, or figure out what's up with that
-		too many C levels bit.
+	- figure out what's up with that too many C levels error I get when I run
+		this. It apparently has something to do with the depth of tables of tables,
+		but that's crap, we only have like two.
 
 
 ]]
@@ -73,21 +80,34 @@ notes.five = 40
 
 	--[[
 	CHAD:
-	I want to not waste resources constantly polling the current beat, so a way
-	to handle that needs to be figured out. Perhaps we'll calculate how long to
-	sleep based on beats per minute before taking our next action. However, I
-	don't want to create a situation where I'm trying to generate notes on the
-	tick (rather than on the beat) and end up sleeping through that intended
-	event. So perhaps a reverse-polling situation ought to be created for the
-	beats. Or I can just watch the ticks. Er... we'll see what I do.  
-	
-	The other thing is I need to not constantly flush new MIDI messages down the
-	pipe every iteration of the while true part. So I'm either sleeping, or I'm
-	constantly checking shit? How do I write my function to wait? Am I waiting on
-	the beat, the bar, or what? Balls.
+					I want to not waste resources constantly polling the current beat, so a way
+					to handle that needs to be figured out. Perhaps we'll calculate how long to
+					sleep based on beats per minute before taking our next action. However, I
+					don't want to create a situation where I'm trying to generate notes on the
+					tick (rather than on the beat) and end up sleeping through that intended
+					event. So perhaps a reverse-polling situation ought to be created for the
+					beats. Or I can just watch the ticks. Er... we'll see what I do.  
+					
+					The other thing is I need to not constantly flush new MIDI messages down the
+					pipe every iteration of the while true part. So I'm either sleeping, or I'm
+					constantly checking shit? How do I write my function to wait? Am I waiting on
+					the beat, the bar, or what? Balls.
 
-	For now I have a checker function.
+					For now I have a checker function.
 
+		Here's what I'll do:
+
+		I'll watch for a change in the current tick by saving the first query into
+		a variable, then saving all subsequent queries into a second one. As soon
+		as the two are not the same, I'll save the current usecs value into a
+		variable, and copy the changed tick into the first tick variable. I will
+		watch for another tick change. When that happens, I'll save the current
+		usecs value into a second variable, and subtract the first one from that.
+		The resulting number is how long I will wait to query JACK from now on, and
+		it's also how long I'll wait to send MIDI events. We'll operate on the tick
+		level. The ticks per beat value shouldn't change, but if I find that it
+		does, then we'll watch for changes in the BPM value, and re-perform this
+		calibration in that event. 
 	
 	--]]
 function wait_for_beat_change(beat)
