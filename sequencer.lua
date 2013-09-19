@@ -21,6 +21,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 --]]
 
 
+
+
 --[[
 
 This will contain all the stuff I plan to reuse with each script.
@@ -30,15 +32,6 @@ TODO:
 	-	replace midialsa by adding MIDI capability to the JACK module, creating a
 		more platform-independent implementation (JACK runs on MacOS, iOS, Linux,
 		and did I read something about Windows?)
-
-	- Write a calibration routine which establishes a heartbeat for the sequencer
-		upon which we will perform all queries to JACK and send all MIDI events.
-		This will be based on the tick. In order to figure out how long between
-		ticks, I have a mind to use the usecs value returned by jack, but I don't
-		know what it is yet (milliseconds I think on my workstation) and the docs
-		say it's platform-dependant which means we might not get consistent
-		results. If it's a problem I'll look into what's available from the Lua
-		end. Anyway for more details see my comment down further.
 
 	- Document the new JACK module
 
@@ -124,11 +117,9 @@ songs.nathans_song[7] = notes.five
 function calculate_sleep_interval(tpb, bpm)
 	local pre_dec_remove = (tpb * bpm / 60 / 32) 	
 											-- ticks per second divided by 32 so I can get 32nd notes
-	print(pre_dec_remove)
 	local dec_remove = tostring(pre_dec_remove)
 	dec_remove = string.gsub(dec_remove, "%p", "")
 	dec_remove = tonumber(dec_remove)
-	print(dec_remove)
 
 	return dec_remove
 end
@@ -155,14 +146,12 @@ ALSA.start()
 while true do
 	if beat ~=last_beat then 
 		local song = "nathans_song"
-		local pitch = notes[beat]
+		local pitch = mynotes[beat]
 		if --[[beat == 5 or]]  bar % 4== 0 then
 			if pitch ~= nil then 
 			pitch = pitch + 3
 			end
 		end
-		--local go = wait_for_beat_change(beat)
-		--if go == 0 then 
 		print("I'm about to make a sound?")
 		print(beat)
 		print(pitch)
@@ -170,7 +159,7 @@ while true do
 		ALSA.output(note)
 		print("I made a noise, apparently")
 		last_beat = beat
-		local sleep_interval = calculate_sleep_interval(tpb, bpm)
-		os.execute("sleep ." .. sleep_interval)
   end
+	local sleep_interval = calculate_sleep_interval(tpb, bpm)
+	os.execute("sleep ." .. sleep_interval)
 end
