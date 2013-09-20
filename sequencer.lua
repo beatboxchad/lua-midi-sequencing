@@ -28,16 +28,24 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 This will contain all the stuff I plan to reuse with each script.
 
 TODO:
-
+	
 	-	replace midialsa by adding MIDI capability to the JACK module, creating a
 		more platform-independent implementation (JACK runs on MacOS, iOS, Linux,
 		and did I read something about Windows?)
+				--- this is in progress (chad)
 
-	- Document the new JACK module
-
-	- figure out what's up with that too many C levels error I get when I run
-		this. It apparently has something to do with the depth of tables of tables,
-		but that's crap, we only have like two.
+	-	reimplement the main while true loop as a set of coroutines. This will
+		allow me to tune the timing in one function, while dealing with handling
+		the notes in another. It should also make the program much more efficient,
+		if I am correct
+	
+	- As I've done with the note names mapping to MIDI note numbers, import the
+		actual song data from an external file, turning this sequencer process into
+		more of a daemon. In the separate lua file I will define my actual music,
+		represented by tables (ala classic tracker almost) or functions. We'll
+		re-load the file with each beat or bar, making live-coding possible without
+		adding mass overhead. We can change the song we're playing and what that
+		song looks like with a simple :w while the main sequencer process is running.
 
 
 ]]
@@ -45,6 +53,7 @@ TODO:
 
 local ALSA = require 'midialsa'
 local JACK = require 'liblua_jack'
+
 require 'notes'
 
 JACK.open_client("lua_client")
@@ -52,114 +61,93 @@ ALSA.client( 'Lua client', 1, 1, true)
 ALSA.connectto(1, 130, 0)
 ALSA.connectfrom( 1, 14, 0 )
 
-local mynotes = { A4, C4, G4, G4, G4, G4, E4, F4, G4}
---[[
-local songs = {}
+local subdivisions = {60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 660, 720, 780, 840, 900, 960, 1020, 1080, 1140, 1200, 1260, 1320, 1380, 1440, 1500, 1560, 1620, 1680, 1740, 1800, 1860, 1920,}
 
-songs.nathans_song = {}
-songs.nathans_song[1] = notes.one
-songs.nathans_song[2] = rest
-songs.nathans_song[3] = notes.two
-songs.nathans_song[4] = nil
-songs.nathans_song[5] = notes.three
-songs.nathans_song[6] = notes.four
-songs.nathans_song[7] = notes.five
+local mynotes = {"A4", "C4", "G4", "G4", "G4", "G4", "E4", "F4", "G4"}
+
+--[[
+
+notes should be tied to the time at which we'd like them to occur. Functions to
+generate these key value pairs will be handy as fuck, and actually the intended
+interface with the sequencer. They would return a table injested by the
+coroutine responsible for actually sending MIDI events down the tube. Neato.
+Won't it be nice when I actually get to that part.
+
 ]]
 
-
-	--[[
-	CHAD:
-
-		JACK also has a lot of sophisticated 
-
-		JACK MIDI events are flushed to a buffer with the nframes time at which the
-		event is valid. It can also handle realtime events, but for sequencing, we
-		can do a thing where we run all our calculations and just put stuff in the
-		buffer with an appropriate time.
-
-
-
-					I want to not waste resources constantly polling the current beat, so a way
-					to handle that needs to be figured out. Perhaps we'll calculate how long to
-					sleep based on beats per minute before taking our next action. However, I
-					don't want to create a situation where I'm trying to generate notes on the
-					tick (rather than on the beat) and end up sleeping through that intended
-					event. So perhaps a reverse-polling situation ought to be created for the
-					beats. Or I can just watch the ticks. Er... we'll see what I do.  
-					
-					The other thing is I need to not constantly flush new MIDI messages down the
-					pipe every iteration of the while true part. So I'm either sleeping, or I'm
-					constantly checking shit? How do I write my function to wait? Am I waiting on
-					the beat, the bar, or what? Balls.
-					
-
-					For now I have a checker function.
-
-				Here's what I'll do:
-
-				I should look into next_usecs and current_usecs, both returned by
-				jack_get_cycle_times()
-
-				I'll watch for a change in the current tick by saving the first query into
-				a variable, then saving all subsequent queries into a second one. As soon
-				as the two are not the same, I'll save the current usecs value into a
-				variable, and copy the changed tick into the first tick variable. I will
-				watch for another tick change. When that happens, I'll save the current
-				usecs value into a second variable, and subtract the first one from that.
-				The resulting number is how long I will wait to query JACK from now on, and
-				it's also how long I'll wait to send MIDI events. We'll operate on the tick
-				level. The ticks per beat value shouldn't change, but if I find that it
-				does, then we'll watch for changes in the BPM value, and re-perform this
-				calibration in that event. 
-	
-	--]]
+local last_beat
+ALSA.start()
 
 function calculate_sleep_interval(tpb, bpm)
 	local pre_dec_remove = (tpb * bpm / 60 / 32) 	
 											-- ticks per second divided by 32 so I can get 32nd notes
 	local dec_remove = tostring(pre_dec_remove)
 	dec_remove = string.gsub(dec_remove, "%p", "")
-	dec_remove = tonumber(dec_remove)
-
-	return dec_remove
+	local sleep_interval = tonumber(dec_remove)
+	return sleep_interval
 end
 
-function wait_for_beat_change(beat)
-	local frame, state, bar, old_beat, tick, num, den = JACK.showtime() 
-	if beat == old_beat then
-		return 1
-	else
-		return 0
-	end
-end
+function land_on_subdivision(tbp,bpm)
 
-local last_beat
+	-- this function is an attempt to subdivide the beats into 1/32 slices. This
+	-- is where we get our quarter, 8th, 16, and 32nd notes.  It is not yet properly implemented.
+	-- it needs to know which subdivision we're on and return that. It also needs to be tuned. 
 
-
-local function jack_info()
-	local frame, state, bar, beat, tick, num, den, tpb, bpm, frametime, nexttime, usecs  = JACK.showtime()
-	return frame, state, bar, beat, tick, num, den, tpb, bpm, frametime, nexttime, usecs  
-end 
-
-local frame, state, bar, beat, tick, num, den, tpb, bpm, frametime, nexttime, usecs  = JACK.showtime()
-ALSA.start()
-while true do
-	if beat ~=last_beat then 
-		local song = "nathans_song"
-		local pitch = mynotes[beat]
-		if --[[beat == 5 or]]  bar % 4== 0 then
-			if pitch ~= nil then 
-			pitch = pitch + 3
-			end
-		end
-		print("I'm about to make a sound?")
-		print(beat)
-		print(pitch)
-		local note = ALSA.noteevent(1,pitch,52,0,.075)
-		ALSA.output(note)
-		print("I made a noise, apparently")
-		last_beat = beat
-  end
 	local sleep_interval = calculate_sleep_interval(tpb, bpm)
 	os.execute("sleep ." .. sleep_interval)
+
+	repeat 
+		frame, state, bar, beat, tick, num, den, tpb, bpm, frametime, nexttime, usecs  = JACK.showtime()
+	until tick % 60 < 10
+
+end
+
+
+function lookup_note(note)
+	if note == nil then 
+	return nil
+	end
+	local octave = string.match(note, '-?%d')
+	octave = tonumber(octave)
+	local notename = string.match(note, '^%D+')
+	--TODO add error handling here
+	local pitch = notes[notename][octave]
+	return pitch
+end
+
+--[[
+
+Okay, so I'm going to take the timing logic and pull it out of the main loop
+and into some coroutines. I'm gonna ditch the while true do, and create two
+coroutines. One of them will sleep us until we're close to the desired tick,
+wake us up, and continuously query JACK till we're close enough to one of the
+1/32 ticks. The other will wake up and spit out the MIDI events applicable to
+that tick.
+
+
+]]
+
+local frame, state, bar, beat, tick, num, den, tpb, bpm, frametime, nexttime, usecs  = JACK.showtime()
+sleep = coroutine.create(function land_on_subdivision(tbp,bpm)
+
+	if beat ~= nil then
+		if beat ~=last_beat then 
+			local sub_div = tick / 60
+			print(sub_div)
+			print(tick)
+
+			print(mynotes[beat])
+			local pitch = lookup_note(mynotes[beat])
+			if --[[beat == 5 or]]  bar % 4== 0 then
+				if pitch ~= nil then 
+				pitch = pitch + 3
+				end
+			end
+			print(beat)
+			print(pitch)
+			local note = ALSA.noteevent(1,pitch,52,0,.075)
+			ALSA.output(note)
+			last_beat = beat
+			end
+		end
 end
