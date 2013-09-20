@@ -53,17 +53,12 @@ TODO:
 
 local ALSA = require 'midialsa'
 local JACK = require 'liblua_jack'
-
 require 'notes'
 
 JACK.open_client("lua_client")
 ALSA.client( 'Lua client', 1, 1, true)
 ALSA.connectto(1, 130, 0)
 ALSA.connectfrom( 1, 14, 0 )
-
-local subdivisions = {60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 660, 720, 780, 840, 900, 960, 1020, 1080, 1140, 1200, 1260, 1320, 1380, 1440, 1500, 1560, 1620, 1680, 1740, 1800, 1860, 1920,}
-
-local mynotes = {"A4", "C4", "G4", "G4", "G4", "G4", "E4", "F4", "G4"}
 
 --[[
 
@@ -81,17 +76,24 @@ ALSA.start()
 function calculate_sleep_interval(tpb, bpm)
 	local pre_dec_remove = (tpb * bpm / 60 / 32) 	
 											-- ticks per second divided by 32 so I can get 32nd notes
+
+											-- figured out a problem. sleeping is not synced to the beat. 
 	local dec_remove = tostring(pre_dec_remove)
 	dec_remove = string.gsub(dec_remove, "%p", "")
 	local sleep_interval = tonumber(dec_remove)
 	return sleep_interval
 end
 
+
 function land_on_subdivision(tbp,bpm)
 
 	-- this function is an attempt to subdivide the beats into 1/32 slices. This
 	-- is where we get our quarter, 8th, 16, and 32nd notes.  It is not yet properly implemented.
-	-- it needs to know which subdivision we're on and return that. It also needs to be tuned. 
+	-- it needs to know which subdivision we're on and return that. It also needs to be tuned.
+
+	-- It needs to automatically recalibrate itself to the beat once in awhile. 
+
+  ::start::
 
 	local sleep_interval = calculate_sleep_interval(tpb, bpm)
 	os.execute("sleep ." .. sleep_interval)
@@ -99,7 +101,8 @@ function land_on_subdivision(tbp,bpm)
 	repeat 
 		frame, state, bar, beat, tick, num, den, tpb, bpm, frametime, nexttime, usecs  = JACK.showtime()
 	until tick % 60 < 10
-
+	coroutine.yield(bar, beat, tick)
+	goto ::start::
 end
 
 
@@ -124,12 +127,18 @@ wake us up, and continuously query JACK till we're close enough to one of the
 1/32 ticks. The other will wake up and spit out the MIDI events applicable to
 that tick.
 
+UPDATE and/or TODO I think I need to implement this in C. Implement my own kind
+of timer/callback type thing. I'm not getting the speed I need to accurately
+catch the ticks without blowing up the CPU. Obviously I need to change
+something about my approach. I'll decide on this after some sleep. Maybe I'm
+just missing something dumb.
 
 ]]
 
 local frame, state, bar, beat, tick, num, den, tpb, bpm, frametime, nexttime, usecs  = JACK.showtime()
 sleep = coroutine.create(function land_on_subdivision(tbp,bpm)
 
+function queue_notes(beat, tick)
 	if beat ~= nil then
 		if beat ~=last_beat then 
 			local sub_div = tick / 60

@@ -18,11 +18,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 --]]
 								 
-#!/usr/bin/env lua5.1
+#!/usr/bin/env lua
 
 local socket = require("socket")
 local sequencer = require("sequencer")
 local ALSA = require 'midialsa'
+local JACK = require 'liblua_jack'
+
+JACK.client_init("lua_client")
 ALSA.client( 'Lua client', 1, 1, true)
 ALSA.connectto(1, 129, 0)
 ALSA.connectfrom( 1, 14, 0 )
@@ -109,6 +112,18 @@ s = iterate()
 --]]
 iterate_beat = beat_iterator()
 iterate_measure = measure_iterator()
+
+	--[[
+	CHAD:
+	we want to not waste resources constantly polling the current beat, so a way
+	to handle that needs to be figured out. Perhaps we'll calculate how long to
+	sleep based on beats per minute before taking our next action. However, I
+	don't want to create a situation where I'm trying to generate notes on the
+	tick (rather than on the beat) and end up sleeping through that intended
+	event. So perhaps a reverse-polling situation ought to be created for the
+	beats. Or I can just watch the ticks. Er... we'll see what I do.  
+	
+	--]]
 
 while true do
   socket.sleep(.2) -- my clumsy way of implementing tempo
