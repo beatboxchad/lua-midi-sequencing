@@ -9,6 +9,7 @@ JACK.activate()
 --ALSA.client( 'Lua client', 1, 1, true)
 --ALSA.connectto(1, 129, 0)
 --ALSA.connectfrom( 1, 14, 0 )
+
 function calculate_sleep_interval(tpb, bpm)
 	local pre_dec_remove = (tpb * bpm / 60 / 32) 	
 											-- ticks per second divided by 32 so I can get 32nd notes
